@@ -1,11 +1,17 @@
 # prototype_scraping.py
 # %% 
+# SETUP
+
+# Libraries
 import os
 from serpapi import GoogleSearch
 import pandas as pd
 
+# Load environment variables
 API_KEY = os.getenv('SERPAPI_KEY')
 
+
+# Define helper functions
 def extract_organic_results(response_dict):
 
     organic_results = response_dict.get("organic_results", [])
@@ -20,6 +26,7 @@ def extract_organic_results(response_dict):
         results_data.append(result_data)
     
     return results_data
+
 
 def get_search_results(query_restaurant, query_location=None):
     # Set payload
@@ -38,27 +45,73 @@ def get_search_results(query_restaurant, query_location=None):
     response_dict = response_raw.get_dict()
     
     # Parse nested json
-    data = extract_organic_results(response_dict)
+    transformed_dict = extract_organic_results(response_dict)
     
     # Format dataframe
-    df_organic_results = pd.DataFrame(data)
-    df_organic_results['input_restaurant'] = query_restaurant
-    df_organic_results['input_address'] = query_location
-    
+    results_df = pd.DataFrame(transformed_dict)
+    results_df['input_restaurant'] = query_restaurant
+    results_df['input_address'] = query_location
     cols_of_interest = ['input_restaurant', 'input_address', 'position', 'title', 'snippet', 'snippet_highlighted_words', 'link', 'displayed_link']
     
-    return df_organic_results[cols_of_interest]
+    return results_df[cols_of_interest]
 
 
-# TESTING
+def remove_blanklisted_domains(results_data, link_column='link'):
+
+    blacklist = [
+        "mapquest", 
+        "yelp", "restaurantji", "restaurantguru",
+        "propertyshark", "loopnet",
+        "tripadvisor", "roadtrippers",
+        "slicelife", "grubhub", "doordash",
+        "instagram", "facebook"
+    ]
+    
+    def contains_keyword(link):
+        return any(keyword in link for keyword in blacklist)
+    
+    filtered_df = results_data[~results_data[link_column].apply(contains_keyword)]
+    
+    return filtered_df
+
+
+def strip_link_domains(results_data, link_column):
+
+    def transform_url(link):
+        stripped_protocol = link.split("//")[-1]                # Step 1: Strip protocol and anything before "//"
+        stripped_www = stripped_protocol.replace("www.", "")    # Step 2: Strip "www."
+        domain_only = stripped_www.split("/")[0]                # Step 3: Keep everything before the first "/"
+        final_domain = ".".join(domain_only.split(".")[:2])     # Step 4: Keep the part before the first period and the subsequent string
+        return final_domain
+    
+    results_data['stripped_domain'] = results_data[link_column].apply(transform_url)
+    
+    unique_domains = set(results_data['stripped_domain'])
+    
+    stripped_df = results_data[results_data['stripped_domain'].isin(unique_domains)].copy()
+    
+    return stripped_df
+
+
+# %%
+# SANDBOX
+
+# Test data
 q = "Blozzom Pizza"
 address = "7341 Collins Avenue"
 city = "Miami Beach"
-
 full_query = q + ' ' + address
 
-df_results = get_search_results(query_restaurant=full_query, query_location=city)
+# Input selection
 # df_results = get_search_results(query_restaurant=address, query_location=city)
-df_results
+df_results = get_search_results(query_restaurant=full_query, query_location=city)
 
-# %%
+# Link refinement
+df_reduced = remove_blanklisted_domains(df_results, 'link')
+df_stripped = strip_link_domains(df_reduced, 'link')
+
+# Domain aggregation
+df_aggregated = df_stripped.groupby(['input_restaurant', 'input_address'])['stripped_domain'].nunique().reset_index()
+
+# Return restaurants with fractured online presence
+df_aggregated[df_aggregated['stripped_domain'] > 1]

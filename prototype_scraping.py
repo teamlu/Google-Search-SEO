@@ -162,7 +162,6 @@ city = "Cedar Park"
 full_query = q + ' ' + address
 
 # Input selection
-# df_results = get_search_results(query_restaurant=address, query_location=city)
 df_results = get_search_results(query_restaurant=full_query, query_location=city)
 
 # Link refinement
@@ -171,10 +170,12 @@ df_stripped = remove_correlated_domains(df_reduced, 'link')
 df_subset = remove_location_domains(df_stripped)
 
 # Domain aggregation
-df_aggregated = df_subset.groupby(['input_restaurant', 'input_address'])['stripped_domain'].nunique().reset_index()
+df_aggregated = df_subset.groupby(['input_restaurant', 'input_address'])['stripped_domain'].agg(lambda x: list(set(x))).reset_index()
+df_aggregated.rename(columns={'stripped_domain': 'unique_domain_list'}, inplace=True)
 
-# Return restaurants with fractured online presence
-df_fractured = df_aggregated[df_aggregated['stripped_domain'] > 1]
+# Identify restaurants with fractured online presence
+df_fractured = df_aggregated[df_aggregated['unique_domain_list'].apply(lambda x: len(x) > 1)]
+df_fractured['unique_domain_count'] = df_aggregated['unique_domain_list'].apply(len)
 df_fractured
 
 # %%

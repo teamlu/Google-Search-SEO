@@ -102,21 +102,21 @@ def remove_correlated_domains(results_data, link_column):
 def remove_location_domains(results_data):
     
     def clean_token(token):
-        """Cleans the input token by removing non-alphanumeric characters and converting to lowercase."""
+        """Remove non-alphanumeric characters and lowercase a token for uniform comparison."""
         return ''.join(char for char in token if char.isalnum()).lower()
 
     def token_in_domain(token, domain):
-        """Checks if a cleaned token is present in the cleaned domain."""
+        """Determine if a token is a substring of any part of a domain, facilitating broad match searches."""
         cleaned_token = clean_token(token)
         domain_tokens = domain.split('.')
         return any(cleaned_token in clean_token(domain_token) for domain_token in domain_tokens)
 
     def all_address_tokens_in_domain(address_tokens, domain):
-        """Checks if all cleaned address tokens are present in the cleaned domain."""
+        """Checks that address-related tokens can be found within the domain, identifying potential address-focused sites."""
         return all(token_in_domain(token, domain) for token in address_tokens)
 
     def no_refined_restaurant_tokens_in_domain(refined_restaurant_tokens, domain):
-        """Checks if no cleaned refined restaurant tokens are present in the cleaned domain."""
+        """Checks that restaurant tokens don't appear in the domain, aiming to exclude non-relevant or overly general sites."""
         return all(not token_in_domain(token, domain) for token in refined_restaurant_tokens)
 
     indices_to_keep = []

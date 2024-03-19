@@ -6,12 +6,13 @@
 import os
 from serpapi import GoogleSearch
 import pandas as pd
+import re
 
 # Load environment variables
 API_KEY = os.getenv('SERPAPI_KEY')
 
 
-# Define helper functions
+# Define api functions
 def extract_organic_results(response_dict):
 
     organic_results = response_dict.get("organic_results", [])
@@ -28,7 +29,9 @@ def extract_organic_results(response_dict):
     return results_data
 
 
-def get_search_results(query_restaurant, query_location=None):
+def get_search_results(query_restaurant, 
+                       query_location=None):
+    
     # Set payload
     params = {
         "q": query_restaurant,
@@ -56,7 +59,10 @@ def get_search_results(query_restaurant, query_location=None):
     return results_df[cols_of_interest]
 
 
-def remove_blanklisted_domains(results_data, link_column='link'):
+# Define helper functions
+
+
+def remove_blacklisted_domains(results_data, link_column='link'):
 
     blacklist = [
         "mapquest", 
@@ -75,16 +81,16 @@ def remove_blanklisted_domains(results_data, link_column='link'):
     return filtered_df
 
 
-def strip_link_domains(results_data, link_column):
+def remove_correlated_domains(results_data, link_column):
 
-    def transform_url(link):
+    def strip_domain(link):
         stripped_protocol = link.split("//")[-1]                # Step 1: Strip protocol and anything before "//"
         stripped_www = stripped_protocol.replace("www.", "")    # Step 2: Strip "www."
         domain_only = stripped_www.split("/")[0]                # Step 3: Keep everything before the first "/"
         final_domain = ".".join(domain_only.split(".")[:2])     # Step 4: Keep the part before the first period and the subsequent string
         return final_domain
     
-    results_data['stripped_domain'] = results_data[link_column].apply(transform_url)
+    results_data['stripped_domain'] = results_data[link_column].apply(strip_domain)
     
     unique_domains = set(results_data['stripped_domain'])
     
@@ -93,13 +99,65 @@ def strip_link_domains(results_data, link_column):
     return stripped_df
 
 
+def remove_location_domains(results_data):
+    
+    def clean_token(token):
+        """Cleans the input token by removing non-alphanumeric characters and converting to lowercase."""
+        return ''.join(char for char in token if char.isalnum()).lower()
+
+    def token_in_domain(token, domain):
+        """Checks if a cleaned token is present in the cleaned domain."""
+        cleaned_token = clean_token(token)
+        domain_tokens = domain.split('.')
+        return any(cleaned_token in clean_token(domain_token) for domain_token in domain_tokens)
+
+    def all_address_tokens_in_domain(address_tokens, domain):
+        """Checks if all cleaned address tokens are present in the cleaned domain."""
+        return all(token_in_domain(token, domain) for token in address_tokens)
+
+    def no_refined_restaurant_tokens_in_domain(refined_restaurant_tokens, domain):
+        """Checks if no cleaned refined restaurant tokens are present in the cleaned domain."""
+        return all(not token_in_domain(token, domain) for token in refined_restaurant_tokens)
+
+    indices_to_keep = []
+
+    for index, row in results_data.iterrows():
+        restaurant_tokens = {clean_token(token) for token in row['input_restaurant'].lower().split()}
+        address_tokens = {clean_token(token) for token in row['input_address'].lower().split()}
+        domain = row['stripped_domain'].lower()
+
+        # Remove address tokens from restaurant tokens
+        refined_restaurant_tokens = restaurant_tokens - address_tokens
+
+        # print("Restaurant: ", restaurant_tokens)
+        # print("Address: ", address_tokens)
+        # print("Domain: ", domain)
+        # print("Refined Restaurant: ", refined_restaurant_tokens)
+
+        if all_address_tokens_in_domain(address_tokens, domain) and no_refined_restaurant_tokens_in_domain(refined_restaurant_tokens, domain):
+            continue
+        else:
+            indices_to_keep.append(index)
+
+    return results_data.loc[indices_to_keep]
+
+
 # %%
 # SANDBOX
 
 # Test data
-q = "Blozzom Pizza"
-address = "7341 Collins Avenue"
-city = "Miami Beach"
+# q = "Blozzom Pizza"
+# address = "7341 Collins Avenue"
+# city = "Miami Beach"
+
+# q = "Paradise Pizza & Grill"
+# address = "400 N Main St"
+# city = "Southington"	
+# full_query = q + ' ' + address
+
+q = "Niki's Pizza & Pasta - Cedar Park"
+address = "508 North Bell Boulevard"
+city = "Cedar Park"	
 full_query = q + ' ' + address
 
 # Input selection
@@ -107,11 +165,15 @@ full_query = q + ' ' + address
 df_results = get_search_results(query_restaurant=full_query, query_location=city)
 
 # Link refinement
-df_reduced = remove_blanklisted_domains(df_results, 'link')
-df_stripped = strip_link_domains(df_reduced, 'link')
+df_reduced = remove_blacklisted_domains(df_results, 'link')
+df_stripped = remove_correlated_domains(df_reduced, 'link')
+df_subset = remove_location_domains(df_stripped)
 
 # Domain aggregation
-df_aggregated = df_stripped.groupby(['input_restaurant', 'input_address'])['stripped_domain'].nunique().reset_index()
+df_aggregated = df_subset.groupby(['input_restaurant', 'input_address'])['stripped_domain'].nunique().reset_index()
 
 # Return restaurants with fractured online presence
-df_aggregated[df_aggregated['stripped_domain'] > 1]
+df_fractured = df_aggregated[df_aggregated['stripped_domain'] > 1]
+df_fractured
+
+# %%

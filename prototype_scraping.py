@@ -1,4 +1,3 @@
-# prototype_scraping.py
 # %% 
 # SETUP
 
@@ -6,7 +5,6 @@
 import os
 from serpapi import GoogleSearch
 import pandas as pd
-import re
 
 # Load environment variables
 API_KEY = os.getenv('SERPAPI_KEY')
@@ -145,19 +143,22 @@ def remove_location_domains(results_data):
 # %%
 # SANDBOX
 
-# Test data
-# q = "Blozzom Pizza"
-# address = "7341 Collins Avenue"
-# city = "Miami Beach"
+# Test 1
+q = "Blozzom Pizza"
+address = "7341 Collins Avenue"
+city = "Miami Beach"
 
-# q = "Paradise Pizza & Grill"
-# address = "400 N Main St"
-# city = "Southington"	
-# full_query = q + ' ' + address
+# Test 2
+q = "Paradise Pizza & Grill"
+address = "400 N Main St"
+city = "Southington"	
 
+# Test 3
 q = "Niki's Pizza & Pasta - Cedar Park"
 address = "508 North Bell Boulevard"
 city = "Cedar Park"	
+
+# Create search query, combining restaurant name and address
 full_query = q + ' ' + address
 
 # Input selection
